@@ -1,0 +1,60 @@
+---
+description: defensive application security skill for AI-built web apps — write-secure defaults, OWASP/CWE-grounded audits with false-positive gates, hack-me proof workflow on your own localhost app, pre-deploy gates. Apply when writing or reviewing code that touches auth, payments, database access, secrets, uploads, webhooks, or user data — and whenever the user asks "is this safe?", "audit this", "harden my app", or "hack me".
+globs:
+alwaysApply: true
+---
+
+# security (Cursor rules export)
+
+The condensed form of the `security` skill — the full skill lives at github.com/lucasgabrieldevgg/security; this file carries the operating rules.
+
+## The security contract
+
+1. **Never trust the client.** Every price, user id, role, permission, and rate-limit counter is re-derived server-side. If it exists only in the browser or the request body, an attacker controls it.
+2. **Deny by default.** New endpoints authenticated unless public is an explicit annotated decision; BaaS rules (Supabase RLS, Firebase rules) ON and owner-scoped.
+3. **Prove it or say you didn't.** A finding is a code path you can point to or a request you actually sent — not a vibe. Fixed-but-not-reverified is labeled exactly that.
+4. **Match paranoia to blast radius.** One sentence of threat modeling for a CRUD form; real care for payments, uploads, and auth.
+5. **Fix the class, not the instance.** After any fix, sweep siblings, other methods, duplicated handlers, and non-HTTP entry points for the same pattern.
+6. **Report like a defender.** Severity by exploitability + concrete impact, file:line, before/after fix, no style nitpicks.
+
+## Write-secure (default while coding)
+
+Before writing a feature that crosses a trust boundary, say out loud: *who can reach this code and what do they control?*
+
+| If the code… | Non-negotiable default |
+| --- | --- |
+| Reads/writes by client-supplied id | Ownership **in the query** (`where: { id, userId: caller }`); `404` on miss |
+| Adds a route / server action | Authenticated by default; public is the annotated exception |
+| Runs in the browser / mobile bundle | No secrets, no security decisions; server re-checks everything |
+| Builds SQL / shell / HTML / a path | Never by concatenation — parameterize / encode / allow-list |
+| Fetches a user-supplied URL | Host allow-list + block private & link-local IPs + no redirects (SSRF) |
+| Uses Supabase / Firebase | RLS/rules ON, deny-by-default, scoped to `auth.uid()`; service keys server-side |
+| Receives a webhook | Verify the signature **before** trusting the body |
+| Accepts a body into an update | Allow-list fields; never spread the whole body (mass assignment) |
+| Handles secrets | Env only, server only, never logged, never returned |
+| Charges money | Amount derived server-side from a stored price |
+
+**Never introduce, even if asked casually:** frontend-only permission checks; `dangerouslySetInnerHTML`/`v-html` on user data; template-string SQL; `eval`/`exec` with user input; secrets under `NEXT_PUBLIC_`/`VITE_`; `allow read, write: if true` or RLS-off on real data; disabled TLS verification; `Access-Control-Allow-Origin: *` with credentials. Say why, offer the safe version.
+
+**30-second adversarial pass before "done":** someone else's id? negative/huge id? logged out? different user? 10 MB input? `../`, `<script>`, `'; DROP`, `169.254.169.254`? two racing requests? body replayed with `isAdmin: true`?
+
+## Audit (existing code)
+
+Scope & inventory (stack, entry points incl. cron/queue/webhooks, trust boundaries, dependency manifests) → category scan in top-10 rank order → severity report. **Precision gate on every candidate:** confirmed file:line code path, reachable (not dead/fixture code), 10–20 lines of context read, one consolidated finding per distinct bug, severity proportional to real impact. `Math.random()` in UI animation ≠ crypto failure; static `innerHTML` ≠ XSS; ORM + ownership `where` ≠ IDOR. For security-critical surfaces, deep scan: recon dangerous construction sites → taint-trace each dynamic variable to input/constant origin → classify Vulnerable / Likely / Not / Needs-manual-review (torn? manual review — false negatives are worse). Map findings to OWASP A01–A10 names + CWE anchors. Critical findings go at the very top, never buried.
+
+## Hack-me (proof on your own localhost app)
+
+Scope first — local targets only, non-destructive proofs, no flooding, say the scope back and get a "go". Map routes/auth → prioritize by likelihood × impact (access control first) → probe with the **minimal request that succeeds only if the bug exists** (IDOR: user A requests B's object; missing auth: no token; client trust: replay with `amount`/`isAdmin` edited; injection: one benign marker on a seeded row) → report request + redacted response → patch → **re-run the exact probe and show it fail** → sweep for the same pattern on untouched paths → label what you fixed but couldn't exercise as *"same pattern, fixed, not separately proven"*.
+
+## Pre-deploy gate (blocking items)
+
+RLS/rules test passed on schema changes (insert as A, read as B, expect denial) · gitleaks clean, no client-exposed server keys · strict schema validation on external input · auth in every new handler · JWT alg pinned + iss/aud verified · rate limits on login/reset and metered LLM calls · webhook signatures verified + idempotent handlers · server-derived prices · security headers enforced (CSP without blanket `unsafe-inline`) · CORS exact-origin allow-list · cookie flags (`HttpOnly`/`Secure`/`SameSite`) · error tracking wired.
+
+## Final gate
+
+> If an attacker read this code tomorrow, what would they control? Can every finding in your report be traced to a line or a request — and can the user re-run your proof themselves?
+
+If not, it's not done. Security ships at *proven and patched* — not at *probably fine*.
+
+---
+Sources & attribution: this export condenses the `security` skill (github.com/lucasgabrieldevgg/security), an original synthesis (MIT) merging kulchankas/paranoid (MIT), raroque/vibe-security-skill (MIT), utkusen/sast-skills (MIT), UnitOneAI/SecuritySkills (MIT), allsmog/vuln-scout (MIT), bridge-mind/BridgeSecurity (MIT), ivan-sincek/threat-modeling-agent-skills (MIT), and izaurogabriel-hash/cyberseguranca (MIT), with the misuse-resistant-API concept from Trail of Bits' skills (CC BY-SA 4.0, concept only, no text copied). Full credits and the surveyed-but-excluded list: ATTRIBUTION.md in the repo.
